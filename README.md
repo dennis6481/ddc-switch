@@ -61,6 +61,43 @@ Uninstall with `just uninstall` (config is preserved).
 No daemon — the binary runs on demand and exits. Self-contained so it works
 from Raycast, launchers, or any environment with a limited PATH.
 
+## For LG Monitor
+
+### Windows
+
+The normal Windows backend uses the built-in `dxva2.dll` DDC/CI API. This path
+does not require an NVIDIA GPU; Intel, AMD, and NVIDIA systems can use it as
+long as the monitor, driver, and connection expose DDC/CI.
+
+Some newer LG monitors, including the WK95U tested with this project, ignore
+the normal input-source command. For these displays, the Windows backend
+detects LG from the monitor's PNP/EDID information and sends selected private
+input values through NVIDIA's raw-I2C API instead:
+
+- LG private input switching currently requires a 64-bit Windows installation,
+  an NVIDIA GPU/driver exposing `nvapi64.dll`, and a DDC path reachable by that
+  GPU.
+- Intel/AMD systems can still use the ordinary DDC commands, but the LG
+  private input path is not implemented for them yet.
+- Hybrid-graphics laptops, multiple GPUs, USB-C docks, KVMs, and adapters may
+  prevent NVIDIA from reaching the monitor's DDC channel.
+- Private input values are monitor/model-specific. `0xD1` is the Type-C value
+  verified for the WK95U; it is not a universal LG value.
+- The private command is write-only from this backend, so an immediate VCP
+  readback cannot reliably confirm the new input. The screen may switch even
+  when the CLI reports that verification is unavailable.
+
+The checked-in `config.default.json` uses generic VCP values. During first
+automatic display discovery, an uncustomized config is saved with LG defaults
+(`hdmi: 0x90`, `dp: 0xD0`, `type-c: 0xD1`) when the detected display is LG.
+Existing customized input mappings are preserved.
+
+If LG detection fails, the standard `dxva2.dll` path is used. If a configured
+private LG value is used without a usable NVIDIA NVAPI path, the command fails
+instead of silently sending an incompatible standard command.
+
+### macOS
+
 ## CLI
 
 ```sh
@@ -144,7 +181,9 @@ The Skill tells Claude:
   `YOUR_DISPLAY_NAME` or empty, the first command automatically selects and saves
   the only DDC-visible display. With multiple displays, choose one from the list
   in the error message; an existing configured value is never overwritten.
-- `inputs` — logical name → VCP 0x60 value (use `ddc caps` on Windows to find values for your monitor)
+- `inputs` — logical name → monitor input value. Most monitors use VCP 0x60
+  values; LG private-protocol monitors may use model-specific values such as
+  `0xD1` for Type-C. Use `ddc caps` on Windows for the standard values.
 - `toggle` — the two inputs `ddc toggle` cycles between
 - `m1ddcPath` — macOS only; null means find via PATH
 

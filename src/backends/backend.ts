@@ -13,6 +13,8 @@ export interface DisplayInfo {
   /** 表示用の通し番号 (1 始まり) */
   index: number;
   name: string;
+  /** Manufacturer detected from PNP/EDID on Windows; undefined if unavailable. */
+  brand?: string;
   /**
    * バックエンド内で 1 台を特定する不透明な文字列。
    * macOS は m1ddc の UUID、Windows は物理モニタの列挙順。

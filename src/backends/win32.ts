@@ -30,11 +30,17 @@ import {
   type VcpProperty,
   type VcpReading,
 } from "./backend.ts";
+import { isLgSidechannelInput, NvapiLgSidechannel } from "./nvapi.ts";
 
 /** PHYSICAL_MONITOR { HANDLE hPhysicalMonitor; WCHAR szPhysicalMonitorDescription[128]; } */
 const PHYSICAL_MONITOR_SIZE = 8 + 128 * 2;
 const DESCRIPTION_OFFSET = 8;
 const DESCRIPTION_CHARS = 128;
+const MONITOR_INFO_EX_SIZE = 104;
+const MONITOR_INFO_DEVICE_OFFSET = 40;
+const DISPLAY_DEVICE_SIZE = 840;
+const DISPLAY_DEVICE_STRING_OFFSET = 68;
+const DISPLAY_DEVICE_ID_OFFSET = 328;
 
 const VCP_CODE: Record<VcpProperty, number> = {
   // m1ddc の headers/i2c.h と同じ割り当て
@@ -59,12 +65,39 @@ function lowByte(value: number): number {
 interface PhysicalMonitor {
   info: DisplayInfo;
   handle: bigint;
+  isLg: boolean;
+}
+
+function readWideString(buffer: Uint8Array, offset: number, chars: number): string {
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const values: number[] = [];
+  for (let i = 0; i < chars; i++) {
+    const value = view.getUint16(offset + i * 2, true);
+    if (value === 0) break;
+    values.push(value);
+  }
+  return String.fromCharCode(...values);
+}
+
+function isLgMonitor(deviceId: string, deviceString: string): boolean {
+  const value = `${deviceId} ${deviceString}`.toUpperCase();
+  // GSM is LG Electronics' PNP monitor manufacturer id. Keep text checks as
+  // a fallback for drivers that expose a friendly name but no PNP id.
+  return /(?:^|\\)GSM[A-Z0-9]|LG ELECTRONICS|LG DISPLAY|\bLG\b/.test(value);
 }
 
 function symbols() {
   const user32 = dlopen("user32.dll", {
     EnumDisplayMonitors: {
       args: [FFIType.ptr, FFIType.ptr, FFIType.function, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+    GetMonitorInfoW: {
+      args: [FFIType.u64, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+    EnumDisplayDevicesW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.u32],
       returns: FFIType.i32,
     },
   });
@@ -123,6 +156,7 @@ export class Win32Backend implements DdcBackend {
   /** GetPhysicalMonitorsFromHMONITOR に渡したバッファ。解放に同じものが要る */
   #blocks: { count: number; buffer: Uint8Array }[] = [];
   #monitors: PhysicalMonitor[] | null = null;
+  #lgSidechannel: NvapiLgSidechannel | null = null;
 
   #symbols(): Symbols {
     if (this.#lib) return this.#lib;
@@ -157,6 +191,30 @@ export class Win32Backend implements DdcBackend {
       callback.close();
     }
     return found;
+  }
+
+  #identity(hmonitor: bigint): { brand?: string; isLg: boolean } {
+    const { user32 } = this.#symbols();
+    const monitorInfo = new Uint8Array(MONITOR_INFO_EX_SIZE);
+    new DataView(monitorInfo.buffer).setUint32(0, MONITOR_INFO_EX_SIZE, true);
+    if (!user32.symbols.GetMonitorInfoW(hmonitor, ptr(monitorInfo))) {
+      return { isLg: false };
+    }
+
+    const displayDevice = new Uint8Array(DISPLAY_DEVICE_SIZE);
+    new DataView(displayDevice.buffer).setUint32(0, DISPLAY_DEVICE_SIZE, true);
+    const ok = user32.symbols.EnumDisplayDevicesW(
+      ptr(monitorInfo, MONITOR_INFO_DEVICE_OFFSET),
+      0,
+      ptr(displayDevice),
+      0,
+    );
+    if (!ok) return { isLg: false };
+
+    const deviceId = readWideString(displayDevice, DISPLAY_DEVICE_ID_OFFSET, 128);
+    const deviceString = readWideString(displayDevice, DISPLAY_DEVICE_STRING_OFFSET, 128);
+    const isLg = isLgMonitor(deviceId, deviceString);
+    return { brand: isLg ? "LG" : undefined, isLg };
   }
 
   #release(): void {
@@ -196,6 +254,7 @@ export class Win32Backend implements DdcBackend {
       this.#blocks.push({ count, buffer });
 
       const view = new DataView(buffer.buffer);
+      const identity = this.#identity(hmonitor);
       for (let i = 0; i < count; i++) {
         const base = i * PHYSICAL_MONITOR_SIZE;
         const chars: number[] = [];
@@ -210,7 +269,9 @@ export class Win32Backend implements DdcBackend {
             index: monitors.length + 1,
             name: String.fromCharCode(...chars),
             id: String(monitors.length + 1),
+            brand: identity.brand,
           },
+          isLg: identity.isLg,
         });
       }
     }
@@ -263,8 +324,21 @@ export class Win32Backend implements DdcBackend {
   }
 
   async set(id: string, property: VcpProperty, value: number): Promise<number> {
-    const { dxva2 } = this.#symbols();
     const monitor = this.#monitor(id);
+    if (property === "input" && monitor.isLg && isLgSidechannelInput(value)) {
+      try {
+        this.#lgSidechannel ??= new NvapiLgSidechannel();
+        this.#lgSidechannel.writeInput(value);
+        return value;
+      } catch (err) {
+        throw new DdcError(
+          `Could not send LG side-channel input value ${value}`,
+          `nvapi!I2CWrite(VCP 0xF4, value 0x${value.toString(16)}, source 0x50): ${String(err)}`,
+        );
+      }
+    }
+
+    const { dxva2 } = this.#symbols();
     const ok = dxva2.symbols.SetVCPFeature(monitor.handle, VCP_CODE[property], value);
     if (!ok) {
       throw new DdcError(
@@ -305,6 +379,8 @@ export class Win32Backend implements DdcBackend {
   }
 
   close(): void {
+    this.#lgSidechannel?.close();
+    this.#lgSidechannel = null;
     this.#release();
   }
 }

@@ -17,13 +17,23 @@ export interface Config {
   m1ddcPath: string | null;
 }
 
+/** Generic VCP 0x60 input values used before a monitor is identified. */
+export const DEFAULT_INPUTS: Record<string, number> = {
+  "type-c": 27,
+  hdmi: 17,
+  dp: 15,
+};
+
+/** LG private input values used by displays that require the NVAPI side channel. */
+export const LG_DEFAULT_INPUTS: Record<string, number> = {
+  "type-c": 0xd1,
+  hdmi: 0x90,
+  dp: 0xd0,
+};
+
 export const DEFAULT_CONFIG: Config = {
   display: "YOUR_DISPLAY_NAME",
-  inputs: {
-    "type-c": 27,
-    hdmi: 17,
-    dp: 15,
-  },
+  inputs: DEFAULT_INPUTS,
   toggle: ["type-c", "hdmi"],
   m1ddcPath: null,
 };

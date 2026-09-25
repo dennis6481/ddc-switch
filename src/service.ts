@@ -2,7 +2,16 @@
 // Modified by Rui Ma on 25 Sep. 2026
 //
 import { Ddc, createBackend, type DisplayInfo } from "./ddc.ts";
-import { CONFIG_PATH, isUnconfiguredDisplay, saveConfig, saveState, type Config } from "./config.ts";
+import {
+  CONFIG_PATH,
+  DEFAULT_INPUTS,
+  LG_DEFAULT_INPUTS,
+  isUnconfiguredDisplay,
+  loadState,
+  saveConfig,
+  saveState,
+  type Config,
+} from "./config.ts";
 
 export interface InputState {
   value: number;
@@ -27,6 +36,20 @@ export interface SwitchResult {
   /** 切替後に読み直した値。検証できなかった場合は null */
   verified: number | null;
   display: DisplayInfo;
+}
+
+// LG's private input side channel is write-only from the point of view of
+// the normal VCP 0x60 readback path. The Windows backend sends these through
+// NVAPI, so a standard readback must not be treated as proof of failure.
+const LG_SIDECHANNEL_INPUTS = new Set([0x90, 0x91, 0xd0, 0xd1]);
+
+function sameInputs(a: Record<string, number>, b: Record<string, number>): boolean {
+  const aEntries = Object.entries(a);
+  const bEntries = Object.entries(b);
+  return (
+    aEntries.length === bEntries.length &&
+    aEntries.every(([name, value]) => b[name] === value)
+  );
 }
 
 /**
@@ -94,6 +117,11 @@ export class MonitorService {
     }
 
     const selected = displays[0]!;
+    // config.default.json is intentionally generic. On first discovery, use
+    // the LG side-channel values only when the user has not customized inputs.
+    if (selected.brand === "LG" && sameInputs(this.config.inputs, DEFAULT_INPUTS)) {
+      this.config.inputs = { ...LG_DEFAULT_INPUTS };
+    }
     this.config.display = selected.name || selected.id;
     await saveConfig(this.config);
     return selected;
@@ -137,7 +165,7 @@ export class MonitorService {
     // 戻したときは、リンクの再確立中で読み取りに失敗する時間帯がある。
     // まず一息置いてから、バックエンドごとの猶予いっぱいまで読み直す。
     await Bun.sleep(1500);
-    const verified = await this.#verifySwitch();
+    const verified = LG_SIDECHANNEL_INPUTS.has(value) ? null : await this.#verifySwitch();
 
     return {
       requested: target,
@@ -176,9 +204,27 @@ export class MonitorService {
   /** 現在の入力を、指定した2つの論理名の間で往復させる。 */
   async toggleInput(a: string, b: string): Promise<SwitchResult> {
     const valueA = this.resolveInput(a);
+    const valueB = this.resolveInput(b);
     const display = await this.display();
     const current = await this.#ddc.getInput(display.id);
-    return this.switchInput(current === valueA ? b : a);
+    let effectiveCurrent = current;
+
+    // After an LG side-channel switch, VCP 0x60 continues to report the old
+    // standard input. Prefer the persisted last target when the readback is
+    // not one of the two inputs being toggled.
+    if (current !== valueA && current !== valueB) {
+      const state = await loadState();
+      if (state.lastInput !== null) {
+        try {
+          const last = this.resolveInput(state.lastInput);
+          if (last === valueA || last === valueB) effectiveCurrent = last;
+        } catch {
+          // Ignore stale state and use the standard readback.
+        }
+      }
+    }
+
+    return this.switchInput(effectiveCurrent === valueA ? b : a);
   }
 
   async setLuminance(value: number): Promise<number> {
