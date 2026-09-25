@@ -74,7 +74,7 @@ _link:
      if (Test-Path $dst) { Move-Item $dst $old -Force }; \
      Copy-Item dist\ddc.exe $dst -Force; \
      if (Test-Path $old) { try { Remove-Item $old -Force -ErrorAction Stop } catch { Write-Output "    (running process — ddc.old.exe removed next time)" } }
-    @Remove-Item -Force -ErrorAction SilentlyContinue "{{ prefix }}\ddcd.exe", "{{ prefix }}\ddcd.old.exe", "{{ prefix }}\ddc.cmd" # 旧名 (daemon 時代の名残) の掃除
+    @foreach ($p in @("{{ prefix }}\ddcd.exe", "{{ prefix }}\ddcd.old.exe", "{{ prefix }}\ddc.cmd")) { if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } } # 旧名 (daemon 時代の名残) の掃除
 
 # config file
 
