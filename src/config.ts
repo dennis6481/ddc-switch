@@ -1,3 +1,6 @@
+//
+// Modified by Rui Ma on 25 Sep. 2026
+//
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
@@ -24,6 +27,12 @@ export const DEFAULT_CONFIG: Config = {
   toggle: ["type-c", "hdmi"],
   m1ddcPath: null,
 };
+
+/** Returns true when the display still needs one-time automatic discovery. */
+export function isUnconfiguredDisplay(display: string): boolean {
+  const value = display.trim();
+  return value.length === 0 || value === DEFAULT_CONFIG.display;
+}
 
 export async function loadConfig(): Promise<Config> {
   const file = Bun.file(CONFIG_PATH);

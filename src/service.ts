@@ -1,5 +1,8 @@
+//
+// Modified by Rui Ma on 25 Sep. 2026
+//
 import { Ddc, createBackend, type DisplayInfo } from "./ddc.ts";
-import { saveState, type Config } from "./config.ts";
+import { CONFIG_PATH, isUnconfiguredDisplay, saveConfig, saveState, type Config } from "./config.ts";
 
 export interface InputState {
   value: number;
@@ -64,8 +67,36 @@ export class MonitorService {
     return { value, names: this.namesFor(value) };
   }
 
-  display(): Promise<DisplayInfo> {
-    return this.#ddc.resolveDisplay(this.config.display);
+  /**
+   * Resolve the configured display, discovering it only when the config still
+   * contains the placeholder. Auto-selection is safe only when exactly one
+   * DDC-controllable display is visible.
+   */
+  async display(): Promise<DisplayInfo> {
+    if (!isUnconfiguredDisplay(this.config.display)) {
+      return this.#ddc.resolveDisplay(this.config.display);
+    }
+
+    const displays = await this.#ddc.listDisplays();
+    if (displays.length === 0) {
+      throw new Error(
+        `No DDC-controllable display found. Connect a display, then set "display" in ${CONFIG_PATH}.`,
+      );
+    }
+
+    if (displays.length > 1) {
+      const choices = displays
+        .map((display) => `  [${display.index}] ${display.name || "(unnamed)"} (${display.id})`)
+        .join("\n");
+      throw new Error(
+        `Multiple DDC-controllable displays found. Set "display" in ${CONFIG_PATH} to one of:\n${choices}`,
+      );
+    }
+
+    const selected = displays[0]!;
+    this.config.display = selected.name || selected.id;
+    await saveConfig(this.config);
+    return selected;
   }
 
   listDisplays() {

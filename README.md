@@ -140,7 +140,10 @@ The Skill tells Claude:
 }
 ```
 
-- `display` — partial name match, backend-specific ID, or index number
+- `display` — partial name match, backend-specific ID, or index number. If it is
+  `YOUR_DISPLAY_NAME` or empty, the first command automatically selects and saves
+  the only DDC-visible display. With multiple displays, choose one from the list
+  in the error message; an existing configured value is never overwritten.
 - `inputs` — logical name → VCP 0x60 value (use `ddc caps` on Windows to find values for your monitor)
 - `toggle` — the two inputs `ddc toggle` cycles between
 - `m1ddcPath` — macOS only; null means find via PATH
