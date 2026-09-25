@@ -33,7 +33,7 @@ Want to name inputs after machines? Add aliases in your config's `inputs`:
 brew install m1ddc
 git clone <this repo> ~/src/ddc-switch && cd ddc-switch
 mise trust && mise install
-just install
+mise exec -- just install
 ```
 
 ### Windows
@@ -42,7 +42,7 @@ just install
 git clone <this repo> $env:USERPROFILE\src\ddc-switch
 cd $env:USERPROFILE\src\ddc-switch
 mise trust; mise install
-just install
+mise exec -- just install
 ```
 
 No extra install needed — `dxva2.dll` ships with Windows.

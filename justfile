@@ -143,7 +143,7 @@ raycast:
     New script directory. Register it in Raycast:
       Preferences → Extensions → Script Commands → Add Script Directory
       Cmd+Shift+G → Cmd+V (path is copied) → Enter
-MSG
+    MSG
     else
       echo ""
       echo "Raycast: search for "Switch Display to Type-C" etc."
