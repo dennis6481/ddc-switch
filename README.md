@@ -151,6 +151,53 @@ Assign hotkeys to your most-used commands via Record Hotkey.
 Brightness/contrast/volume controls are intentionally not exposed as Raycast
 scripts — input switching is the hotkey use case.
 
+## Logi Options+
+
+Logi Options+ can trigger an application from a mouse button, keyboard key, or
+Smart Action. Since the input argument is different for each command, wrap the
+`ddc` command in a platform-native application or script first.
+
+### Windows: CMD wrapper
+
+Create a `.cmd` file for each input. For example, save this as
+`ddcToMacBook.cmd` on the Desktop:
+
+```bat
+@echo off
+"%USERPROFILE%\.local\bin\ddc.exe" type-c
+```
+
+Replace `type-c` with `hdmi` or another configured input as needed. In Logi
+Options+, assign the file through the **Execute** / **Run** action.
+The `.cmd` file contains the argument, so the Options+ action itself does not
+need a separate argument field.
+
+If Windows hides file extensions, enable **File name extensions** in File
+Explorer so the file is saved as `ddcToMacBook.cmd`, not
+`ddcToMacBook.cmd.txt`.
+
+### macOS: Automator application
+
+Create one Automator application for each input:
+
+1. Open **Automator** and choose **New Document → Application**.
+2. Add the **Run Shell Script** action.
+3. Set the shell to `/bin/zsh` and use:
+
+   ```zsh
+   "$HOME/.local/bin/ddc" type-c
+   ```
+
+   Replace `type-c` with `hdmi` or another configured input when needed.
+4. Save it as an application, for example `ddc-type-c.app` in `~/Applications/`.
+5. In Logi Options+, assign the application to the desired button or Smart
+   Action using **Run/Open application**.
+
+Using the absolute path is recommended because Logi Options+ may not inherit
+the same `PATH` as an interactive Terminal.
+
+
+
 ## Claude Code (Skill)
 
 `skills/ddc-display/` contains a Claude Code Skill:
