@@ -21,6 +21,17 @@ import {
 
 const DISPLAY_LINE = /^\[(\d+)\]\s+(.*?)\s+\(([0-9A-Fa-f-]{36})\)\s*$/;
 
+// m1ddc does not expose a separate manufacturer field in the basic list
+// output, so use the product name for the conservative LG detection needed by
+// the input-alt command.
+function isLgName(name: string): boolean {
+  return /\bLG\b/i.test(name);
+}
+
+// These are the alternate input values documented by m1ddc for some LG
+// displays. Other values continue through the normal `input` command.
+const LG_INPUT_ALT_VALUES = new Set([144, 145, 208, 209, 210]);
+
 /**
  * m1ddc の読み取りが失敗したときに返ってくるゴミ値。
  *
@@ -60,6 +71,7 @@ export class M1ddcBackend implements DdcBackend {
 
   #bin: string | null;
   #resolved: string | null = null;
+  #lgDisplayIds = new Set<string>();
 
   constructor(m1ddcPath: string | null = null) {
     this.#bin = m1ddcPath;
@@ -105,6 +117,7 @@ export class M1ddcBackend implements DdcBackend {
 
   async listDisplays(): Promise<DisplayInfo[]> {
     const out = await this.#run(["display", "list"]);
+    this.#lgDisplayIds.clear();
     const displays: DisplayInfo[] = [];
     for (const line of out.split("\n")) {
       const m = DISPLAY_LINE.exec(line.trim());
@@ -114,8 +127,10 @@ export class M1ddcBackend implements DdcBackend {
         index: Number(index),
         // 内蔵ディスプレイなどは名前が "(null)" で返ってくる
         name: name === "(null)" ? "" : name,
+        brand: isLgName(name) ? "LG" : undefined,
         id: uuid,
       });
+      if (isLgName(name)) this.#lgDisplayIds.add(uuid);
     }
     return displays;
   }
@@ -132,7 +147,13 @@ export class M1ddcBackend implements DdcBackend {
   }
 
   async set(id: string, property: VcpProperty, value: number): Promise<number> {
-    const out = await this.#run(["display", id, "set", COMMAND[property], String(value)]);
+    const command =
+      property === "input" &&
+      this.#lgDisplayIds.has(id) &&
+      LG_INPUT_ALT_VALUES.has(value)
+        ? "input-alt"
+        : COMMAND[property];
+    const out = await this.#run(["display", id, "set", command, String(value)]);
     const echoed = Number(out);
     return Number.isFinite(echoed) ? echoed : value;
   }

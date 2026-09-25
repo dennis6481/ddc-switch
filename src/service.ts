@@ -5,7 +5,8 @@ import { Ddc, createBackend, type DisplayInfo } from "./ddc.ts";
 import {
   CONFIG_PATH,
   DEFAULT_INPUTS,
-  LG_DEFAULT_INPUTS,
+  LG_MAC_INPUTS,
+  LG_WINDOWS_INPUTS,
   isUnconfiguredDisplay,
   loadState,
   saveConfig,
@@ -38,10 +39,16 @@ export interface SwitchResult {
   display: DisplayInfo;
 }
 
-// LG's private input side channel is write-only from the point of view of
-// the normal VCP 0x60 readback path. The Windows backend sends these through
-// NVAPI, so a standard readback must not be treated as proof of failure.
-const LG_SIDECHANNEL_INPUTS = new Set([0x90, 0x91, 0xd0, 0xd1]);
+// LG private input commands are write-only from the point of view of the
+// normal VCP 0x60 readback path. A standard readback must not be treated as
+// proof that the private switch failed.
+const LG_PRIVATE_INPUTS = new Set([
+  ...Object.values(LG_WINDOWS_INPUTS),
+  ...Object.values(LG_MAC_INPUTS),
+  0x91,
+  145,
+  209,
+]);
 
 function sameInputs(a: Record<string, number>, b: Record<string, number>): boolean {
   const aEntries = Object.entries(a);
@@ -118,9 +125,10 @@ export class MonitorService {
 
     const selected = displays[0]!;
     // config.default.json is intentionally generic. On first discovery, use
-    // the LG side-channel values only when the user has not customized inputs.
+    // platform-specific LG values only when the user has not customized inputs.
     if (selected.brand === "LG" && sameInputs(this.config.inputs, DEFAULT_INPUTS)) {
-      this.config.inputs = { ...LG_DEFAULT_INPUTS };
+      this.config.inputs =
+        process.platform === "darwin" ? { ...LG_MAC_INPUTS } : { ...LG_WINDOWS_INPUTS };
     }
     this.config.display = selected.name || selected.id;
     await saveConfig(this.config);
@@ -165,7 +173,7 @@ export class MonitorService {
     // 戻したときは、リンクの再確立中で読み取りに失敗する時間帯がある。
     // まず一息置いてから、バックエンドごとの猶予いっぱいまで読み直す。
     await Bun.sleep(1500);
-    const verified = LG_SIDECHANNEL_INPUTS.has(value) ? null : await this.#verifySwitch();
+    const verified = LG_PRIVATE_INPUTS.has(value) ? null : await this.#verifySwitch();
 
     return {
       requested: target,

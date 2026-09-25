@@ -27,8 +27,6 @@ Want to name inputs after machines? Add aliases in your config's `inputs`:
 
 ## Install
 
-### macOS
-
 ```sh
 brew install m1ddc
 git clone <this repo> ~/src/ddc-switch && cd ddc-switch
@@ -97,6 +95,16 @@ private LG value is used without a usable NVIDIA NVAPI path, the command fails
 instead of silently sending an incompatible standard command.
 
 ### macOS
+
+When an LG display is detected on first run, the macOS backend uses m1ddc's
+alternate input command for LG's private input values:
+
+- Type-C / DP3: `210`
+- HDMI1: `144`
+- DisplayPort1: `208`
+
+These values are model-specific. Existing customized input mappings are
+preserved, and non-LG displays continue to use the normal `input` command.
 
 ## CLI
 

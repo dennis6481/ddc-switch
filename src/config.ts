@@ -24,11 +24,18 @@ export const DEFAULT_INPUTS: Record<string, number> = {
   dp: 15,
 };
 
-/** LG private input values used by displays that require the NVAPI side channel. */
-export const LG_DEFAULT_INPUTS: Record<string, number> = {
+/** LG private input values used by the Windows NVAPI side channel. */
+export const LG_WINDOWS_INPUTS: Record<string, number> = {
   "type-c": 0xd1,
   hdmi: 0x90,
   dp: 0xd0,
+};
+
+/** LG alternate input values accepted by m1ddc on macOS. */
+export const LG_MAC_INPUTS: Record<string, number> = {
+  "type-c": 210,
+  hdmi: 144,
+  dp: 208,
 };
 
 export const DEFAULT_CONFIG: Config = {
